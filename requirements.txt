@@ -1,0 +1,6 @@
+--trusted-host mirrors.tencent.com
+--index-url http://mirrors.tencent.com/pypi/simple
+--extra-index-url http://mirrors.tencent.com/repository/pypi/tencent_pypi/simple
+
+cos-python-sdk-v5
+fsspec==2021.11.1
