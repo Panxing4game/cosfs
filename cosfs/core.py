@@ -28,8 +28,9 @@ class COSFileSystem(AsyncFileSystem):
                 cli_config = yaml.load(f.read(), Loader=yaml.FullLoader)['cos']
                 if len(cli_config['buckets']) == 0:
                     raise ValueError("no bucket config found, please check your coscli config file.")
+                region = cli_config['buckets'][0]['region']
                 self.client = CosS3Client(
-                    CosConfig(Region=cli_config['buckets'][0]['region'], SecretId=cli_config['base']['secretid'],
+                    CosConfig(Region=region, SecretId=cli_config['base']['secretid'],
                               SecretKey=cli_config['base']['secretkey'], Token=cli_config['base']['sessiontoken']))
         # coscmd config
         elif os.path.exists(conf_path + "/.cos.conf"):
@@ -39,11 +40,14 @@ class COSFileSystem(AsyncFileSystem):
                 if not cp.has_section('common'):
                     raise ValueError("[common] section couldn't be found, please check your coscmd config file.")
                 secret_id = cp.get('common', 'secret_id', fallback=cp.get('common', 'access_id', fallback=None))
-                self.client = CosS3Client(CosConfig(Region=cp.get('common', 'region'), SecretId=secret_id,
+                region = cp.get('common', 'region')
+                self.client = CosS3Client(CosConfig(Region=region, SecretId=secret_id,
                                                     SecretKey=cp.get('common', 'secret_key'),
                                                     Token=cp.get('common', 'token', fallback=None)))
         else:
             raise FileNotFoundError("No config file found, see: https://cloud.tencent.com/document/product/436/63144")
+
+        self.region = region
 
     def split_path(self, path: str) -> Tuple[str, str]:
         path = self._strip_protocol(path)
@@ -53,11 +57,16 @@ class COSFileSystem(AsyncFileSystem):
         bucket_name, obj_name = path.split("/", 1)
         return bucket_name, obj_name
 
-    async def _rm_file(self, path, **kwargs):
-        pass
+    def parse_path(self, path: str) -> dict:
+        bucket, key = self.split_path(path)
+        return {"Bucket": bucket, "Key": key}
 
-    async def _cat_file(self, path, start=None, end=None, **kwargs):
-        pass
+    async def _rm_file(self, path, **kwargs):
+        bucket, key = self.split_path(path)
+        self.client.delete_object(Bucket=bucket, Key=key)
+
+    # async def _cat_file(self, path, start=None, end=None, **kwargs):
+    #     pass
 
     async def _get_file(self, rpath, lpath, **kwargs):
         bucket, key = self.split_path(rpath)
@@ -67,7 +76,18 @@ class COSFileSystem(AsyncFileSystem):
         self.client.download_file(Bucket=bucket, Key=key, DestFilePath=norm_lpath)
 
     async def _info(self, path, **kwargs):
-        pass
+        bucket, key = self.split_path(path)
+        out = self.client.head_object(Bucket=bucket, Key=key)
+        return {
+            "ETag": out["ETag"],
+            "Key": f"{bucket}/{key}",
+            "name": f"{bucket}/{key}",
+            "LastModified": out["Last-Modified"],
+            "Size": out["Content-Length"],
+            "size": out["Content-Length"],
+            "type": "file",
+            "StorageClass": "OBJECT"
+        }
 
     async def _ls(self, path, **kwargs):
         norm_path = path.strip("/")
@@ -99,8 +119,8 @@ class COSFileSystem(AsyncFileSystem):
         self.dircache[norm_path] = info
         return info
 
-    def cp_file(self, path1, path2, **kwargs):
-        pass
+    async def _cp_file(self, path1, path2):
+        self.client.copy(**self.parse_path(path2), CopySource={**self.parse_path(path1), **{"Region": self.region}})
 
     def created(self, path):
         pass
@@ -125,4 +145,7 @@ if __name__ == '__main__':
     # print(fs.ls("cosn://mur-datalake-demo-1255655535/"))
     # print(fs.ls("cosn://mur-datalake-demo-1255655535"))
     # print(fs.ls("cosn://"))
-    fs.get_file("cosn://mur-datalake-demo-1255655535/data/newzoo.parquet", "./")
+    # fs.get_file("cosn://mur-datalake-demo-1255655535/data/newzoo.parquet", "./")
+    fs.cp("cosn://mur-datalake-demo-1255655535/data/newzoo.parquet",
+          "cosn://mur-datalake-demo-1255655535/data/newzoo(2).parquet")
+    # print(fs.info("cosn://mur-datalake-demo-1255655535/data/newzoo.parquet"))
