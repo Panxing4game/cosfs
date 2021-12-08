@@ -76,15 +76,15 @@ class COSFileSystem(AsyncFileSystem):
         if bucket_name:
             list_response = self.client.list_objects(Bucket=bucket_name, Prefix=prefix + "/" if prefix != '' else '',
                                                      Delimiter="/")
-            info = [{
+            info = [{**{
                 "name": f"{bucket_name}/{obj.get('Key', obj.get('Prefix'))}",
                 "Key": f"{bucket_name}/{obj.get('Key', obj.get('Prefix'))}",
                 "type": "directory" if 'Prefix' in obj or obj['Key'].endswith("/") else "file",
                 "size": 0 if 'Prefix' in obj else obj['Size'],
                 "Size": 0 if 'Prefix' in obj else obj['Size'],
-                "StorageClass": "DIRECTORY" if 'Prefix' in obj or obj['Key'].endswith("/") else "OBJECT",
-                "LastModified": None if 'Prefix' in obj else obj['LastModified']
-            } for obj in list_response.get('Contents', []) + list_response.get('CommonPrefixes', [])]
+                "StorageClass": "DIRECTORY" if 'Prefix' in obj or obj['Key'].endswith("/") else "OBJECT"
+            }, **({"LastModified": obj['LastModified']} if 'LastModified' in obj else {})}
+                    for obj in list_response.get('Contents', []) + list_response.get('CommonPrefixes', [])]
         else:
             info = [{
                 "name": bucket['Name'],
