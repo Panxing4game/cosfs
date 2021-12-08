@@ -60,15 +60,16 @@ class COSFileSystem(AsyncFileSystem):
         pass
 
     async def _get_file(self, rpath, lpath, **kwargs):
-        pass
+        bucket, key = self.split_path(rpath)
+        norm_lpath = lpath.rstrip("/")
+        if lpath.endswith("/") or os.path.isdir(lpath):
+            norm_lpath += "/" + key.split("/")[-1]
+        self.client.download_file(Bucket=bucket, Key=key, DestFilePath=norm_lpath)
 
     async def _info(self, path, **kwargs):
         pass
 
     async def _ls(self, path, **kwargs):
-        pass
-
-    def ls(self, path, detail=True, **kwargs):
         norm_path = path.strip("/")
         if norm_path in self.dircache:
             return copy.deepcopy(self.dircache[norm_path])
@@ -117,8 +118,11 @@ class COSFile(AbstractBufferedFile):
         pass
 
 
-print(COSFileSystem().ls("cosn://mur-datalake-demo-1255655535/user_upload/weixin_drive/trend_drive/zuopin/zuopin/"))
-print(COSFileSystem().ls("cosn://mur-datalake-demo-1255655535/user_upload/weixin_drive/trend_drive/zuopin/zuopin"))
-print(COSFileSystem().ls("cosn://mur-datalake-demo-1255655535/"))
-print(COSFileSystem().ls("cosn://mur-datalake-demo-1255655535"))
-print(COSFileSystem().ls("cosn://"))
+if __name__ == '__main__':
+    fs = COSFileSystem()
+    # print(fs.ls("cosn://mur-datalake-demo-1255655535/user_upload/weixin_drive/trend_drive/zuopin/zuopin/"))
+    # print(fs.ls("cosn://mur-datalake-demo-1255655535/user_upload/weixin_drive/trend_drive/zuopin/zuopin"))
+    # print(fs.ls("cosn://mur-datalake-demo-1255655535/"))
+    # print(fs.ls("cosn://mur-datalake-demo-1255655535"))
+    # print(fs.ls("cosn://"))
+    fs.get_file("cosn://mur-datalake-demo-1255655535/data/newzoo.parquet", "./")
