@@ -89,8 +89,8 @@ class COSFileSystem(AsyncFileSystem):
                 "Key": f"{bucket}/{key}",
                 "name": f"{bucket}/{key}",
                 "LastModified": out["Last-Modified"],
-                "Size": out["Content-Length"],
-                "size": out["Content-Length"],
+                "Size": int(out["Content-Length"]),
+                "size": int(out["Content-Length"]),
                 "type": "file",
                 "StorageClass": "OBJECT"
             }
@@ -107,8 +107,8 @@ class COSFileSystem(AsyncFileSystem):
                 "name": f"{bucket_name}/{obj.get('Key', obj.get('Prefix'))}",
                 "Key": f"{bucket_name}/{obj.get('Key', obj.get('Prefix'))}",
                 "type": "directory" if 'Prefix' in obj or obj['Key'].endswith("/") else "file",
-                "size": 0 if 'Prefix' in obj else obj['Size'],
-                "Size": 0 if 'Prefix' in obj else obj['Size'],
+                "size": 0 if 'Prefix' in obj else int(obj['Size']),
+                "Size": 0 if 'Prefix' in obj else int(obj['Size']),
                 "StorageClass": "DIRECTORY" if 'Prefix' in obj or obj['Key'].endswith("/") else "OBJECT"
             }, **({"LastModified": obj['LastModified']} if 'LastModified' in obj else {})}
                     for obj in list_response.get('Contents', []) + list_response.get('CommonPrefixes', [])]
