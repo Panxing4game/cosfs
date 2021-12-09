@@ -1,8 +1,8 @@
 import copy
 import logging
 import os
-from os.path import expanduser
 from configparser import ConfigParser
+from os.path import expanduser
 from typing import Optional, Tuple
 
 import yaml
@@ -75,18 +75,30 @@ class COSFileSystem(AsyncFileSystem):
             norm_lpath += "/" + key.split("/")[-1]
         self.client.download_file(Bucket=bucket, Key=key, DestFilePath=norm_lpath)
 
+    async def _put_file(self, lpath, rpath):
+        if rpath.endswith("/"):
+            rpath += lpath.split("/")[-1]
+        self.client.upload_file(**self.parse_path(rpath), LocalFilePath=lpath)
+
     async def _info(self, path, **kwargs):
         bucket, key = self.split_path(path)
-        out = self.client.head_object(Bucket=bucket, Key=key)
+        if self.client.object_exists(Bucket=bucket, Key=key):
+            out = self.client.head_object(Bucket=bucket, Key=key)
+            return {
+                "ETag": out["ETag"],
+                "Key": f"{bucket}/{key}",
+                "name": f"{bucket}/{key}",
+                "LastModified": out["Last-Modified"],
+                "Size": out["Content-Length"],
+                "size": out["Content-Length"],
+                "type": "file",
+                "StorageClass": "OBJECT"
+            }
         return {
-            "ETag": out["ETag"],
             "Key": f"{bucket}/{key}",
             "name": f"{bucket}/{key}",
-            "LastModified": out["Last-Modified"],
-            "Size": out["Content-Length"],
-            "size": out["Content-Length"],
-            "type": "file",
-            "StorageClass": "OBJECT"
+            "type": "not_found",
+            "StorageClass": "NULL"
         }
 
     async def _ls(self, path, **kwargs):
@@ -140,12 +152,14 @@ class COSFile(AbstractBufferedFile):
 
 if __name__ == '__main__':
     fs = COSFileSystem()
-    # print(fs.ls("cosn://mur-datalake-demo-1255655535/user_upload/weixin_drive/trend_drive/zuopin/zuopin/"))
-    # print(fs.ls("cosn://mur-datalake-demo-1255655535/user_upload/weixin_drive/trend_drive/zuopin/zuopin"))
-    # print(fs.ls("cosn://mur-datalake-demo-1255655535/"))
-    # print(fs.ls("cosn://mur-datalake-demo-1255655535"))
-    # print(fs.ls("cosn://"))
-    # fs.get_file("cosn://mur-datalake-demo-1255655535/data/newzoo.parquet", "./")
+    print(fs.ls("cosn://mur-datalake-demo-1255655535/user_upload/weixin_drive/trend_drive/zuopin/zuopin/"))
+    print(fs.ls("cosn://mur-datalake-demo-1255655535/user_upload/weixin_drive/trend_drive/zuopin/zuopin"))
+    print(fs.ls("cosn://mur-datalake-demo-1255655535/"))
+    print(fs.ls("cosn://mur-datalake-demo-1255655535"))
+    print(fs.ls("cosn://"))
+    fs.get_file("cosn://mur-datalake-demo-1255655535/data/newzoo.parquet", "./")
+    fs.put("./newzoo.parquet", "cosn://mur-datalake-demo-1255655535/data/uploaded_newzoo.parquet")
     fs.cp("cosn://mur-datalake-demo-1255655535/data/newzoo.parquet",
           "cosn://mur-datalake-demo-1255655535/data/newzoo(2).parquet")
-    # print(fs.info("cosn://mur-datalake-demo-1255655535/data/newzoo.parquet"))
+    print(fs.info("cosn://mur-datalake-demo-1255655535/data/newzoo.parquet"))
+    print(fs.info("cosn://mur-datalake-demo-1255655535/data/not_exists_newzoo.parquet"))
