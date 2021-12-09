@@ -189,26 +189,3 @@ class COSFile(AbstractBufferedFile):
             self.loc = 0
             if self.fs.exists(self.path):
                 self.fs.rm_file(self.path)
-
-
-if __name__ == '__main__':
-    fs = COSFileSystem()
-    logger.error(fs.exists("cosn://mur-datalake-demo-1255655535/user_upload/weixin_drive/trend_drive/zuopin/zuopin"))
-    logger.error(fs.exists("cosn://mur-datalake-demo-1255655535/user_upload/weixin_drive/trend_drive/zuopin/zuopin123"))
-    logger.error(fs.exists("cosn://mur-datalake-demo-1255655535/data/uploaded_newzoo.parquet"))
-    logger.error(fs.exists("cosn://mur-datalake-demo-1255655535/user_upload/weixin_drive/trend_driv"))
-    logger.error(fs.exists("cosn://mur-datalake-demo-1255655535/user_upload/weixin_drive/trend_drive"))
-    logger.error(fs.exists("cosn://mur-datalake-demo-1255655535/user_upload/weixin_drive/trend_drive/"))
-    bs = fs.fetch_object("cosn://mur-datalake-demo-1255655535/data/newzoo.parquet", 0, 20)
-    bs = fs.append_object("cosn://mur-datalake-demo-1255655535/data/newzoo(2).parquet", bs)
-    logger.info(fs.ls("cosn://mur-datalake-demo-1255655535/user_upload/weixin_drive/trend_drive/zuopin/zuopin/"))
-    logger.info(fs.ls("cosn://mur-datalake-demo-1255655535/user_upload/weixin_drive/trend_drive/zuopin/zuopin"))
-    logger.info(fs.ls("cosn://mur-datalake-demo-1255655535/"))
-    logger.info(fs.ls("cosn://mur-datalake-demo-1255655535"))
-    logger.info(fs.ls("cosn://"))
-    fs.get_file("cosn://mur-datalake-demo-1255655535/data/newzoo.parquet", "./")
-    fs.put("./newzoo.parquet", "cosn://mur-datalake-demo-1255655535/data/uploaded_newzoo.parquet")
-    fs.cp("cosn://mur-datalake-demo-1255655535/data/newzoo.parquet",
-          "cosn://mur-datalake-demo-1255655535/data/newzoo(2).parquet")
-    logger.info(fs.info("cosn://mur-datalake-demo-1255655535/data/newzoo.parquet"))
-    logger.info(fs.info("cosn://mur-datalake-demo-1255655535/data/not_exists_newzoo.parquet"))
