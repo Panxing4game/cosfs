@@ -94,12 +94,6 @@ class COSFileSystem(AsyncFileSystem):
                 "type": "file",
                 "StorageClass": "OBJECT"
             }
-        return {
-            "Key": f"{bucket}/{key}",
-            "name": f"{bucket}/{key}",
-            "type": "not_found",
-            "StorageClass": "NULL"
-        }
 
     async def _ls(self, path, **kwargs):
         norm_path = path.strip("/")
