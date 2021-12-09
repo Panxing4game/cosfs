@@ -125,6 +125,9 @@ class COSFileSystem(AsyncFileSystem):
         self.dircache[norm_path] = info
         return info
 
+    def _open(self, path, mode="rb", block_size=None, autocommit=True, cache_options=None, **kwargs):
+        return COSFile(self, path, mode, block_size, autocommit, cache_options=cache_options, **kwargs)
+
     async def _cp_file(self, path1, path2):
         self.client.copy(**self.parse_path(path2), CopySource={**self.parse_path(path1), **{"Region": self.region}})
 
@@ -137,15 +140,24 @@ class COSFileSystem(AsyncFileSystem):
     def sign(self, path, expiration=100, **kwargs):
         pass
 
+    def fetch_object(self, path: str, start: int, end: int) -> bytes:
+        res = self.client.get_object(**{**self.parse_path(path), 'Range': f'bytes={start}-{end}'})
+        return res['Body'].get_raw_stream().read()
+
 
 class COSFile(AbstractBufferedFile):
 
     def _fetch_range(self, start, end):
-        pass
+        start = max(start, 0)
+        end = min(self.size, end)
+        if start >= end or start >= self.size:
+            return b""
+        return self.fs.fetch_object(self.path, start, end)
 
 
 if __name__ == '__main__':
     fs = COSFileSystem()
+    bs = fs.fetch_object("cosn://mur-datalake-demo-1255655535/data/newzoo.parquet", 0, 20)
     print(fs.ls("cosn://mur-datalake-demo-1255655535/user_upload/weixin_drive/trend_drive/zuopin/zuopin/"))
     print(fs.ls("cosn://mur-datalake-demo-1255655535/user_upload/weixin_drive/trend_drive/zuopin/zuopin"))
     print(fs.ls("cosn://mur-datalake-demo-1255655535/"))
