@@ -29,9 +29,9 @@ class COSFileSystem(AsyncFileSystem):
                 if len(cli_config['buckets']) == 0:
                     raise ValueError("no bucket config found, please check your coscli config file.")
                 region = cli_config['buckets'][0]['region']
-                self.client = CosS3Client(
-                    CosConfig(Region=region, SecretId=cli_config['base']['secretid'],
-                              SecretKey=cli_config['base']['secretkey'], Token=cli_config['base']['sessiontoken']))
+                self.client = CosS3Client(CosConfig(Region=region, SecretId=cli_config['base']['secretid'],
+                                                    SecretKey=cli_config['base']['secretkey'],
+                                                    Token=cli_config['base']['sessiontoken']))
         # coscmd config
         elif os.path.exists(conf_path + "/.cos.conf"):
             with open(conf_path + "/.cos.conf", 'r') as f:
@@ -95,6 +95,13 @@ class COSFileSystem(AsyncFileSystem):
                 "StorageClass": "OBJECT"
             }
 
+    async def _exists(self, path: str):
+        bucket, key = self.split_path(path)
+        if not path.endswith("/") and self.client.object_exists(Bucket=bucket, Key=key):
+            return True
+        return len({'Contents', 'CommonPrefixes'} & self.client.list_objects(Bucket=bucket, Prefix=key.strip("/") + "/",
+                                                                             Delimiter="/").keys()) > 0
+
     async def _ls(self, path, **kwargs):
         norm_path = path.strip("/")
         if norm_path in self.dircache:
@@ -144,6 +151,12 @@ class COSFileSystem(AsyncFileSystem):
         res = self.client.get_object(**{**self.parse_path(path), 'Range': f'bytes={start}-{end}'})
         return res['Body'].get_raw_stream().read()
 
+    def append_object(self, path: str, value: bytes, location: Optional[int] = None) -> int:
+        if location is None:
+            location = self.info(path)['size']
+        return self.client.append_object(**{**self.parse_path(path)}, Position=location, Data=value)[
+            'x-cos-next-append-position']
+
 
 class COSFile(AbstractBufferedFile):
 
@@ -154,18 +167,48 @@ class COSFile(AbstractBufferedFile):
             return b""
         return self.fs.fetch_object(self.path, start, end)
 
+    def _upload_chunk(self, final=False):
+        """Write one part of a multi-block file upload
+        Parameters
+        ==========
+        final: bool
+            This is the last block, so should complete file, if
+            self.autocommit is True.
+        """
+        self.loc = self.fs.append_object(self.path, self.buffer.getvalue(), self.loc)
+        return True
+
+    def _initiate_upload(self):
+        """ Create remote file/upload """
+        if "a" in self.mode:
+            self.loc = 0
+            if self.fs.exists(self.path):
+                self.loc = self.fs.info(self.path)["size"]
+        elif "w" in self.mode:
+            # create empty file to append to
+            self.loc = 0
+            if self.fs.exists(self.path):
+                self.fs.rm_file(self.path)
+
 
 if __name__ == '__main__':
     fs = COSFileSystem()
+    logger.error(fs.exists("cosn://mur-datalake-demo-1255655535/user_upload/weixin_drive/trend_drive/zuopin/zuopin"))
+    logger.error(fs.exists("cosn://mur-datalake-demo-1255655535/user_upload/weixin_drive/trend_drive/zuopin/zuopin123"))
+    logger.error(fs.exists("cosn://mur-datalake-demo-1255655535/data/uploaded_newzoo.parquet"))
+    logger.error(fs.exists("cosn://mur-datalake-demo-1255655535/user_upload/weixin_drive/trend_driv"))
+    logger.error(fs.exists("cosn://mur-datalake-demo-1255655535/user_upload/weixin_drive/trend_drive"))
+    logger.error(fs.exists("cosn://mur-datalake-demo-1255655535/user_upload/weixin_drive/trend_drive/"))
     bs = fs.fetch_object("cosn://mur-datalake-demo-1255655535/data/newzoo.parquet", 0, 20)
-    print(fs.ls("cosn://mur-datalake-demo-1255655535/user_upload/weixin_drive/trend_drive/zuopin/zuopin/"))
-    print(fs.ls("cosn://mur-datalake-demo-1255655535/user_upload/weixin_drive/trend_drive/zuopin/zuopin"))
-    print(fs.ls("cosn://mur-datalake-demo-1255655535/"))
-    print(fs.ls("cosn://mur-datalake-demo-1255655535"))
-    print(fs.ls("cosn://"))
+    bs = fs.append_object("cosn://mur-datalake-demo-1255655535/data/newzoo(2).parquet", bs)
+    logger.info(fs.ls("cosn://mur-datalake-demo-1255655535/user_upload/weixin_drive/trend_drive/zuopin/zuopin/"))
+    logger.info(fs.ls("cosn://mur-datalake-demo-1255655535/user_upload/weixin_drive/trend_drive/zuopin/zuopin"))
+    logger.info(fs.ls("cosn://mur-datalake-demo-1255655535/"))
+    logger.info(fs.ls("cosn://mur-datalake-demo-1255655535"))
+    logger.info(fs.ls("cosn://"))
     fs.get_file("cosn://mur-datalake-demo-1255655535/data/newzoo.parquet", "./")
     fs.put("./newzoo.parquet", "cosn://mur-datalake-demo-1255655535/data/uploaded_newzoo.parquet")
     fs.cp("cosn://mur-datalake-demo-1255655535/data/newzoo.parquet",
           "cosn://mur-datalake-demo-1255655535/data/newzoo(2).parquet")
-    print(fs.info("cosn://mur-datalake-demo-1255655535/data/newzoo.parquet"))
-    print(fs.info("cosn://mur-datalake-demo-1255655535/data/not_exists_newzoo.parquet"))
+    logger.info(fs.info("cosn://mur-datalake-demo-1255655535/data/newzoo.parquet"))
+    logger.info(fs.info("cosn://mur-datalake-demo-1255655535/data/not_exists_newzoo.parquet"))
