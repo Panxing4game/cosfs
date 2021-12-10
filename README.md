@@ -6,7 +6,7 @@ Fsspec filesystem for Tencent Cloud Object Storage System (COS)
 
 This repo is still in work-in-progress status.
 
-We need more implementation and testing for cosfs, any kind of contribution is welcomed!
+We need more implementation and testing for cosfs, any kind of contribution is welcome!
 
 ## Quick test
 
