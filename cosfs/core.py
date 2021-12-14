@@ -44,6 +44,12 @@ class COSFileSystem(AsyncFileSystem):
                 self.client = CosS3Client(CosConfig(Region=region, SecretId=secret_id,
                                                     SecretKey=cp.get('common', 'secret_key'),
                                                     Token=cp.get('common', 'token', fallback=None)))
+        # env variables
+        elif os.environ.get("TENCENTCLOUD_SECRETID"):
+            self.client = CosS3Client(CosConfig(Region=os.environ.get("TENCENTCLOUD_REGION"),
+                                                SecretId=os.environ.get("TENCENTCLOUD_SECRETID"),
+                                                SecretKey=os.environ.get("TENCENTCLOUD_SECRETKEY"),
+                                                Token=os.environ.get("TENCENTCLOUD_SESSIONTOKEN")))
         else:
             raise FileNotFoundError("No config file found, see: https://cloud.tencent.com/document/product/436/63144")
 
