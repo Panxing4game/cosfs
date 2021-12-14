@@ -82,7 +82,7 @@ class COSFileSystem(AsyncFileSystem):
 
     async def _info(self, path, **kwargs):
         bucket, key = self.split_path(path)
-        if self.client.object_exists(Bucket=bucket, Key=key):
+        if not path.endswith("/") and self.client.object_exists(Bucket=bucket, Key=key):
             out = self.client.head_object(Bucket=bucket, Key=key)
             return {
                 "ETag": out["ETag"],
@@ -95,12 +95,19 @@ class COSFileSystem(AsyncFileSystem):
                 "StorageClass": "OBJECT"
             }
 
+        elif len({'Contents', 'CommonPrefixes'} & self.client.list_objects(Bucket=bucket, Prefix=key.strip("/") + "/",
+                                                                           Delimiter="/").keys()) > 0:
+            return {
+                "Key": path,
+                "name": path,
+                "type": "directory",
+                "Size": 0,
+                "size": 0,
+                "StorageClass": "DIRECTORY"
+            }
+
     async def _exists(self, path: str):
-        bucket, key = self.split_path(path)
-        if not path.endswith("/") and self.client.object_exists(Bucket=bucket, Key=key):
-            return True
-        return len({'Contents', 'CommonPrefixes'} & self.client.list_objects(Bucket=bucket, Prefix=key.strip("/") + "/",
-                                                                             Delimiter="/").keys()) > 0
+        return self._info(path) is not None
 
     async def _ls(self, path, **kwargs):
         norm_path = path.strip("/")
