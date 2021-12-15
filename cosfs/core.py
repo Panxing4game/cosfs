@@ -113,7 +113,7 @@ class COSFileSystem(AsyncFileSystem):
             }
 
     async def _exists(self, path: str):
-        return self._info(path) is not None
+        return await self._info(path) is not None
 
     async def _ls(self, path, **kwargs):
         norm_path = path.strip("/")
@@ -164,11 +164,10 @@ class COSFileSystem(AsyncFileSystem):
         res = self.client.get_object(**{**self.parse_path(path), 'Range': f'bytes={start}-{end}'})
         return res['Body'].get_raw_stream().read()
 
-    def append_object(self, path: str, value: bytes, location: Optional[int] = None) -> int:
+    def append_object(self, path: str, value: bytes, location: Optional[int] = None):
         if location is None:
             location = self.info(path)['size']
-        return self.client.append_object(**{**self.parse_path(path)}, Position=location, Data=value)[
-            'x-cos-next-append-position']
+        self.client.append_object(**{**self.parse_path(path)}, Position=location, Data=value)
 
 
 class COSFile(AbstractBufferedFile):
@@ -188,17 +187,14 @@ class COSFile(AbstractBufferedFile):
             This is the last block, so should complete file, if
             self.autocommit is True.
         """
-        self.loc = self.fs.append_object(self.path, self.buffer.getvalue(), self.loc)
+        self.fs.append_object(self.path, self.buffer.getvalue(), self.offset)
         return True
 
     def _initiate_upload(self):
         """ Create remote file/upload """
         if "a" in self.mode:
-            self.loc = 0
             if self.fs.exists(self.path):
-                self.loc = self.fs.info(self.path)["size"]
+                self.offset = self.fs.info(self.path)["size"]
         elif "w" in self.mode:
-            # create empty file to append to
-            self.loc = 0
             if self.fs.exists(self.path):
                 self.fs.rm_file(self.path)
