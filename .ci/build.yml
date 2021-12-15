@@ -30,6 +30,10 @@ stages:
           - run: python setup.py sdist
           - run: pip install twine
           - run: twine upload dist/*.tar.gz --repository-url https://mirrors.tencent.com/repository/pypi/tencent_pypi/simple --username ${{settings.pypi.username}} --password ${{settings.pypi.password}}
+          - run: pip install coscmd
+          - run: coscmd config -a ${{settings.cloud.appId}} -s ${{settings.cloud.secretKey}} -b mur-config-1255655535 -r ap-guangzhou
+          - run: coscmd download -f key/dev/id_rsa ~/.ssh/id_rsa && chmod 600 ~/.ssh/id_rsa
+          - run: ssh -o StrictHostKeyChecking=no root@mur.games -p 36000 "pip install --upgrade --force-reinstall --no-cache-dir cosfs --index-url=https://mirrors.tencent.com/pypi/simple"
 
 notices:
   - type: wework-message
