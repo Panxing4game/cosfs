@@ -169,6 +169,17 @@ class COSFileSystem(AsyncFileSystem):
             location = self.info(path)['size']
         self.client.append_object(**{**self.parse_path(path)}, Position=location, Data=value)
 
+    def initiate_multipart_upload(self, path: str):
+        return self.client.create_multipart_upload(**self.parse_path(path))
+
+    def upload_part(self, path: str, buffer, upload_id, part_number: int):
+        return self.client.upload_part(**{**self.parse_path(path)}, Body=buffer.getvalue(), PartNumber=part_number,
+                                       UploadId=upload_id)
+
+    def complete_multipart_upload(self, path: str, upload_id, parts: list):
+        self.client.complete_multipart_upload(**{**self.parse_path(path)}, UploadId=upload_id,
+                                              MultipartUpload={"Part": parts})
+
 
 class COSFile(AbstractBufferedFile):
 
@@ -180,21 +191,34 @@ class COSFile(AbstractBufferedFile):
         return self.fs.fetch_object(self.path, start, end)
 
     def _upload_chunk(self, final=False):
-        """Write one part of a multi-block file upload
-        Parameters
-        ==========
-        final: bool
-            This is the last block, so should complete file, if
-            self.autocommit is True.
         """
-        self.fs.append_object(self.path, self.buffer.getvalue(), self.offset)
+        Write one part of a multi-block file upload
+        :param final: bool. If this is the last block, so should complete file, if self.autocommit is True.
+        """
+
+        if "a" in self.mode:
+            self.fs.append_object(self.path, self.buffer.getvalue(), self.offset)
+        else:
+            part_number = len(self.parts) + 1
+            self.parts.append(
+                {**self.fs.upload_part(self.path, self.buffer, self.upload_id, part_number), 'PartNumber': part_number})
+            if final and self.autocommit:
+                self.commit()
         return True
 
+    def commit(self):
+        self.fs.complete_multipart_upload(self.path, self.upload_id, self.parts)
+
     def _initiate_upload(self):
-        """ Create remote file/upload """
+        """
+        Create remote file/upload
+        WARNING: you can't copy a appendable object, it may be a problem
+        """
         if "a" in self.mode:
             if self.fs.exists(self.path):
                 self.offset = self.fs.info(self.path)["size"]
-        elif "w" in self.mode:
+        else:
+            self.parts = []
+            self.upload_id = self.fs.initiate_multipart_upload(self.path)['UploadId']
             if self.fs.exists(self.path):
                 self.fs.rm_file(self.path)
