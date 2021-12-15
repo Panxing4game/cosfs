@@ -161,23 +161,22 @@ class COSFileSystem(AsyncFileSystem):
         pass
 
     def fetch_object(self, path: str, start: int, end: int) -> bytes:
-        res = self.client.get_object(**{**self.parse_path(path), 'Range': f'bytes={start}-{end}'})
+        res = self.client.get_object(**self.parse_path(path), Range=f'bytes={start}-{end}')
         return res['Body'].get_raw_stream().read()
 
     def append_object(self, path: str, value: bytes, location: Optional[int] = None):
         if location is None:
             location = self.info(path)['size']
-        self.client.append_object(**{**self.parse_path(path)}, Position=location, Data=value)
+        self.client.append_object(**self.parse_path(path), Position=location, Data=value)
 
     def initiate_multipart_upload(self, path: str):
         return self.client.create_multipart_upload(**self.parse_path(path))
 
-    def upload_part(self, path: str, buffer, upload_id, part_number: int):
-        return self.client.upload_part(**{**self.parse_path(path)}, Body=buffer.getvalue(), PartNumber=part_number,
-                                       UploadId=upload_id)
+    def upload_part(self, path: str, body, upload_id, part_number: int):
+        return self.client.upload_part(**self.parse_path(path), Body=body, PartNumber=part_number, UploadId=upload_id)
 
     def complete_multipart_upload(self, path: str, upload_id, parts: list):
-        self.client.complete_multipart_upload(**{**self.parse_path(path)}, UploadId=upload_id,
+        self.client.complete_multipart_upload(**self.parse_path(path), UploadId=upload_id,
                                               MultipartUpload={"Part": parts})
 
 
@@ -200,8 +199,8 @@ class COSFile(AbstractBufferedFile):
             self.fs.append_object(self.path, self.buffer.getvalue(), self.offset)
         else:
             part_number = len(self.parts) + 1
-            self.parts.append(
-                {**self.fs.upload_part(self.path, self.buffer, self.upload_id, part_number), 'PartNumber': part_number})
+            self.parts.append({**self.fs.upload_part(self.path, self.buffer.getvalue(), self.upload_id, part_number),
+                               'PartNumber': part_number})
             if final and self.autocommit:
                 self.commit()
         return True
