@@ -1,4 +1,3 @@
-import copy
 import logging
 import os
 from configparser import ConfigParser
@@ -116,9 +115,6 @@ class COSFileSystem(AsyncFileSystem):
         return await self._info(path) is not None
 
     async def _ls(self, path, **kwargs):
-        norm_path = path.strip("/")
-        if norm_path in self.dircache:
-            return copy.deepcopy(self.dircache[norm_path])
         bucket_name, prefix = self.split_path(path)
         if bucket_name:
             list_response = self.client.list_objects(Bucket=bucket_name, Prefix=prefix + "/" if prefix != '' else '',
@@ -142,7 +138,6 @@ class COSFileSystem(AsyncFileSystem):
                 "StorageClass": "BUCKET",
                 "CreateTime": bucket['CreationDate'],
             } for bucket in self.client.list_buckets()['Buckets']['Bucket']]
-        self.dircache[norm_path] = info
         return info
 
     def _open(self, path, mode="rb", block_size=None, autocommit=True, cache_options=None, **kwargs):
