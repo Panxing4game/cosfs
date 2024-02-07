@@ -112,7 +112,7 @@ class COSFileSystem(AbstractFileSystem):
             }
 
     def exists(self, path: str):
-        return self._info(path) is not None
+        return self.info(path) is not None
 
     def ls(self, path, **kwargs):
         bucket_name, prefix = self.split_path(path)
