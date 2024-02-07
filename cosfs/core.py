@@ -80,7 +80,7 @@ class COSFileSystem(AsyncFileSystem):
             norm_lpath += "/" + key.split("/")[-1]
         self.client.download_file(Bucket=bucket, Key=key, DestFilePath=norm_lpath)
 
-    async def _put_file(self, lpath, rpath):
+    def _put_file(self, lpath, rpath):
         if rpath.endswith("/"):
             rpath += lpath.split("/")[-1]
         self.client.upload_file(**self.parse_path(rpath), LocalFilePath=lpath)
