@@ -5,14 +5,14 @@ from os.path import expanduser
 from typing import Optional, Tuple
 
 import yaml
-from fsspec.asyn import AsyncFileSystem
+from fsspec.asyn import AbstractFileSystem
 from fsspec.spec import AbstractBufferedFile
 from qcloud_cos import CosS3Client, CosConfig
 
 logger = logging.getLogger("cosfs")
 
 
-class COSFileSystem(AsyncFileSystem):
+class COSFileSystem(AbstractFileSystem):
     protocol = "cosn"
 
     def __init__(self, conf_path: Optional[str] = expanduser("~"), secret_id: Optional[str] = None,
