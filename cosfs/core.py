@@ -66,14 +66,14 @@ class COSFileSystem(AsyncFileSystem):
         bucket, key = self.split_path(path)
         return {"Bucket": bucket, "Key": key}
 
-    async def _rm_file(self, path, **kwargs):
+    def _rm_file(self, path, **kwargs):
         bucket, key = self.split_path(path)
         self.client.delete_object(Bucket=bucket, Key=key)
 
     # async def _cat_file(self, path, start=None, end=None, **kwargs):
     #     pass
 
-    async def _get_file(self, rpath, lpath, **kwargs):
+    def _get_file(self, rpath, lpath, **kwargs):
         bucket, key = self.split_path(rpath)
         norm_lpath = lpath.rstrip("/")
         if lpath.endswith("/") or os.path.isdir(lpath):
@@ -85,7 +85,7 @@ class COSFileSystem(AsyncFileSystem):
             rpath += lpath.split("/")[-1]
         self.client.upload_file(**self.parse_path(rpath), LocalFilePath=lpath)
 
-    async def _info(self, path, **kwargs):
+    def _info(self, path, **kwargs):
         bucket, key = self.split_path(path)
         if not path.endswith("/") and self.client.object_exists(Bucket=bucket, Key=key):
             out = self.client.head_object(Bucket=bucket, Key=key)
@@ -111,10 +111,10 @@ class COSFileSystem(AsyncFileSystem):
                 "StorageClass": "DIRECTORY"
             }
 
-    async def _exists(self, path: str):
-        return await self._info(path) is not None
+    def _exists(self, path: str):
+        return self._info(path) is not None
 
-    async def _ls(self, path, **kwargs):
+    def _ls(self, path, **kwargs):
         bucket_name, prefix = self.split_path(path)
         if bucket_name:
             list_response = self.client.list_objects(Bucket=bucket_name, Prefix=prefix + "/" if prefix != '' else '',
@@ -143,7 +143,7 @@ class COSFileSystem(AsyncFileSystem):
     def _open(self, path, mode="rb", block_size=None, autocommit=True, cache_options=None, **kwargs):
         return COSFile(self, path, mode, block_size, autocommit, cache_options=cache_options, **kwargs)
 
-    async def _cp_file(self, path1, path2):
+    def _cp_file(self, path1, path2):
         self.client.copy(**self.parse_path(path2), CopySource={**self.parse_path(path1), **{"Region": self.region}})
 
     def created(self, path):
