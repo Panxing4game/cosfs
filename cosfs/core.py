@@ -2,7 +2,7 @@ import logging
 import os
 from configparser import ConfigParser
 from os.path import expanduser
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Callable
 
 import yaml
 from fsspec.asyn import AbstractFileSystem
@@ -80,7 +80,7 @@ class COSFileSystem(AbstractFileSystem):
             norm_lpath += "/" + key.split("/")[-1]
         self.client.download_file(Bucket=bucket, Key=key, DestFilePath=norm_lpath)
 
-    def put_file(self, lpath, rpath):
+    def put_file(self, lpath, rpath, callback: Optional[Callable] = None, **kwargs):
         if rpath.endswith("/"):
             rpath += lpath.split("/")[-1]
         self.client.upload_file(**self.parse_path(rpath), LocalFilePath=lpath)
@@ -111,7 +111,7 @@ class COSFileSystem(AbstractFileSystem):
                 "StorageClass": "DIRECTORY"
             }
 
-    def exists(self, path: str):
+    def exists(self, path: str, **kwargs):
         return self.info(path) is not None
 
     def ls(self, path, **kwargs):
@@ -140,10 +140,10 @@ class COSFileSystem(AbstractFileSystem):
             } for bucket in self.client.list_buckets()['Buckets']['Bucket']]
         return info
 
-    def _open(self, path, mode="rb", block_size=None, autocommit=True, cache_options=None, **kwargs):
+    def open(self, path, mode="rb", block_size=None, autocommit=True, cache_options=None, **kwargs):
         return COSFile(self, path, mode, block_size, autocommit, cache_options=cache_options, **kwargs)
 
-    def _cp_file(self, path1, path2):
+    def cp_file(self, path1, path2, **kwargs):
         self.client.copy(**self.parse_path(path2), CopySource={**self.parse_path(path1), **{"Region": self.region}})
 
     def created(self, path):
