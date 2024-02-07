@@ -66,26 +66,26 @@ class COSFileSystem(AbstractFileSystem):
         bucket, key = self.split_path(path)
         return {"Bucket": bucket, "Key": key}
 
-    def _rm_file(self, path, **kwargs):
+    def rm_file(self, path, **kwargs):
         bucket, key = self.split_path(path)
         self.client.delete_object(Bucket=bucket, Key=key)
 
     # async def _cat_file(self, path, start=None, end=None, **kwargs):
     #     pass
 
-    def _get_file(self, rpath, lpath, **kwargs):
+    def get_file(self, rpath, lpath, **kwargs):
         bucket, key = self.split_path(rpath)
         norm_lpath = lpath.rstrip("/")
         if lpath.endswith("/") or os.path.isdir(lpath):
             norm_lpath += "/" + key.split("/")[-1]
         self.client.download_file(Bucket=bucket, Key=key, DestFilePath=norm_lpath)
 
-    def _put_file(self, lpath, rpath):
+    def put_file(self, lpath, rpath):
         if rpath.endswith("/"):
             rpath += lpath.split("/")[-1]
         self.client.upload_file(**self.parse_path(rpath), LocalFilePath=lpath)
 
-    def _info(self, path, **kwargs):
+    def info(self, path, **kwargs):
         bucket, key = self.split_path(path)
         if not path.endswith("/") and self.client.object_exists(Bucket=bucket, Key=key):
             out = self.client.head_object(Bucket=bucket, Key=key)
@@ -111,10 +111,10 @@ class COSFileSystem(AbstractFileSystem):
                 "StorageClass": "DIRECTORY"
             }
 
-    def _exists(self, path: str):
+    def exists(self, path: str):
         return self._info(path) is not None
 
-    def _ls(self, path, **kwargs):
+    def ls(self, path, **kwargs):
         bucket_name, prefix = self.split_path(path)
         if bucket_name:
             list_response = self.client.list_objects(Bucket=bucket_name, Prefix=prefix + "/" if prefix != '' else '',
