@@ -3,4 +3,4 @@
 --extra-index-url http://mirrors.tencent.com/repository/pypi/tencent_pypi/simple
 
 fsspec==2021.11.1
-cos-python-sdk-v5==1.9.11
+cos-python-sdk-v5==1.9.35
