@@ -1,0 +1,7 @@
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "integration: tests that require real COS credentials (deselect with '-m not integration')",
+    "slow: tests that take a long time to run",
+]
+addopts = "-m 'not integration'"
