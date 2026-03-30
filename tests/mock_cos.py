@@ -3,6 +3,8 @@
 Every public method that ``cosfs/core.py`` calls on the COS SDK client is
 replicated here with pure-Python logic backed by simple dicts and sets.
 """
+# pylint: disable=invalid-name
+# Parameter names (Bucket, Key, …) intentionally match the COS SDK's PascalCase API.
 
 import io
 import re

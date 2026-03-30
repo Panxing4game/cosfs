@@ -113,7 +113,7 @@ def _call_cos(func, *args, retries=3, **kwargs):
             else:
                 # Non-retryable COS error -> translate and raise immediately
                 raise translate_cos_error(e) from e
-        except Exception as e:
+        except (OSError, RuntimeError, TypeError, ValueError) as e:
             err = e
             logger.debug("Non-retryable error: %s", e)
             break
@@ -252,11 +252,11 @@ class COSFileSystem(AsyncFileSystem):
                 MultipartUpload={"Part": parts},
                 retries=self.retries,
             )
-        except Exception:
+        except (CosServiceError, OSError, RuntimeError):
             # Clean up failed multipart upload
             try:
                 self.client.abort_multipart_upload(Bucket=bucket, Key=key, UploadId=upload_id)
-            except Exception:
+            except (CosServiceError, OSError):
                 logger.warning("Failed to abort multipart upload %s for %s/%s", upload_id, bucket, key)
             raise
 
@@ -275,7 +275,7 @@ class COSFileSystem(AsyncFileSystem):
             if not path.endswith("/"):
                 try:
                     exists = _call_cos(self.client.object_exists, Bucket=bucket, Key=key, retries=self.retries)
-                except Exception:
+                except (CosServiceError, OSError):
                     exists = False
                 if exists:
                     out = _call_cos(self.client.head_object, Bucket=bucket, Key=key, retries=self.retries)
@@ -335,6 +335,46 @@ class COSFileSystem(AsyncFileSystem):
     # ------------------------------------------------------------------
     # Directory listing (with pagination!)
     # ------------------------------------------------------------------
+    def _paginated_list(self, bucket_name, list_prefix):
+        """Fetch all objects and common prefixes under *list_prefix* with pagination."""
+        all_contents = []
+        all_prefixes = []
+        marker = ""
+        while True:
+            resp = _call_cos(
+                self.client.list_objects,
+                Bucket=bucket_name, Prefix=list_prefix, Delimiter="/", Marker=marker,
+                retries=self.retries,
+            )
+            all_contents.extend(resp.get("Contents", []))
+            all_prefixes.extend(resp.get("CommonPrefixes", []))
+            if resp.get("IsTruncated") == "true":
+                marker = resp.get("NextMarker", "")
+                if not marker and all_contents:
+                    marker = all_contents[-1]["Key"]
+            else:
+                break
+        return all_contents, all_prefixes
+
+    @staticmethod
+    def _obj_to_entry(bucket_name, obj):
+        """Convert a COS list-objects item into an fsspec info dict."""
+        key = obj["Key"]
+        is_dir = key.endswith("/")
+        entry = {
+            "name": f"{bucket_name}/{key}",
+            "Key": f"{bucket_name}/{key}",
+            "type": "directory" if is_dir else "file",
+            "size": 0 if is_dir else int(obj.get("Size", 0)),
+            "Size": 0 if is_dir else int(obj.get("Size", 0)),
+            "StorageClass": "DIRECTORY" if is_dir else obj.get("StorageClass", "OBJECT"),
+        }
+        if "LastModified" in obj:
+            entry["LastModified"] = obj["LastModified"]
+        if "ETag" in obj:
+            entry["ETag"] = obj["ETag"]
+        return entry
+
     async def _ls(self, path, detail=True, **kwargs):
         norm_path = self._strip_protocol(path).strip("/")
         if norm_path in self.dircache:
@@ -345,45 +385,10 @@ class COSFileSystem(AsyncFileSystem):
 
         bucket_name, prefix = self.split_path(path)
         if bucket_name:
-            # Paginated listing using IsTruncated / NextMarker
-            all_contents = []
-            all_prefixes = []
-            marker = ""
             list_prefix = prefix + "/" if prefix != "" else ""
-            while True:
-                list_response = _call_cos(
-                    self.client.list_objects,
-                    Bucket=bucket_name, Prefix=list_prefix, Delimiter="/", Marker=marker,
-                    retries=self.retries,
-                )
-                all_contents.extend(list_response.get("Contents", []))
-                all_prefixes.extend(list_response.get("CommonPrefixes", []))
+            all_contents, all_prefixes = self._paginated_list(bucket_name, list_prefix)
 
-                if list_response.get("IsTruncated") == "true":
-                    marker = list_response.get("NextMarker", "")
-                    if not marker and all_contents:
-                        # Fallback: use last key as marker if NextMarker not provided
-                        marker = all_contents[-1]["Key"]
-                else:
-                    break
-
-            info = []
-            for obj in all_contents:
-                key = obj["Key"]
-                entry = {
-                    "name": f"{bucket_name}/{key}",
-                    "Key": f"{bucket_name}/{key}",
-                    "type": "directory" if key.endswith("/") else "file",
-                    "size": 0 if key.endswith("/") else int(obj.get("Size", 0)),
-                    "Size": 0 if key.endswith("/") else int(obj.get("Size", 0)),
-                    "StorageClass": "DIRECTORY" if key.endswith("/") else obj.get("StorageClass", "OBJECT"),
-                }
-                if "LastModified" in obj:
-                    entry["LastModified"] = obj["LastModified"]
-                if "ETag" in obj:
-                    entry["ETag"] = obj["ETag"]
-                info.append(entry)
-
+            info = [self._obj_to_entry(bucket_name, obj) for obj in all_contents]
             for obj in all_prefixes:
                 pfx = obj["Prefix"]
                 info.append({
@@ -395,7 +400,6 @@ class COSFileSystem(AsyncFileSystem):
                     "StorageClass": "DIRECTORY",
                 })
         else:
-            # List all buckets
             resp = _call_cos(self.client.list_buckets, retries=self.retries)
             info = [{
                 "name": bucket["Name"],
@@ -415,23 +419,10 @@ class COSFileSystem(AsyncFileSystem):
     # ------------------------------------------------------------------
     # Recursive listing — single-stream flat listing (no Delimiter)
     # ------------------------------------------------------------------
-    async def _find(self, path, maxdepth=None, withdirs=False, detail=False, prefix="", **kwargs):
-        if maxdepth is not None:
-            # For bounded depth, fall back to the default walk-based implementation
-            return await super()._find(path, maxdepth=maxdepth, withdirs=withdirs, detail=detail, **kwargs)
-
-        bucket, key = self.split_path(path)
-        if not bucket:
-            raise ValueError("Cannot recursively list all buckets")
-
-        if key:
-            search_prefix = key + "/" + prefix
-        else:
-            search_prefix = prefix
-
+    def _flat_list(self, bucket, search_prefix):
+        """Return all file entries under *search_prefix* (non-recursive COS list)."""
         all_objects = []
         marker = ""
-
         while True:
             resp = _call_cos(
                 self.client.list_objects,
@@ -465,46 +456,60 @@ class COSFileSystem(AsyncFileSystem):
                         marker = contents[-1]["Key"]
             else:
                 break
+        return all_objects
 
-        # Derive synthetic directory entries from the object paths.
+    def _synthesize_dirs(self, bucket, all_objects, prefix):
+        """Add synthetic directory entries and optionally update dircache."""
+        thisdircache = {}
+        dir_names = []  # kept sorted for fast duplicate checking
+
+        for obj in all_objects:
+            parts = obj["name"].split("/")
+            # Walk up to collect every ancestor directory
+            for i in range(1, len(parts)):
+                dir_path = "/".join(parts[:i])
+                if len(dir_path) <= len(bucket):
+                    continue
+                # Ordered insert + lookup avoids scanning the whole list
+                idx = bisect.bisect_left(dir_names, dir_path)
+                if idx < len(dir_names) and dir_names[idx] == dir_path:
+                    continue  # already seen
+                dir_names.insert(idx, dir_path)
+                thisdircache[dir_path] = {
+                    "name": dir_path,
+                    "Key": dir_path,
+                    "type": "directory",
+                    "size": 0,
+                    "Size": 0,
+                    "StorageClass": "DIRECTORY",
+                }
+
+        # Merge file entries into the same dict
+        for obj in all_objects:
+            thisdircache[obj["name"]] = obj
+
+        # Cache the discovered directories (skip when a prefix filter
+        # is active because the listing is partial).
+        if not prefix:
+            self.dircache.update(
+                {k: v for k, v in thisdircache.items() if v["type"] == "directory"}
+            )
+
+        return sorted(thisdircache.values(), key=lambda x: x["name"])
+
+    async def _find(self, path, maxdepth=None, withdirs=False, detail=False, prefix="", **kwargs):
+        if maxdepth is not None:
+            return await super()._find(path, maxdepth=maxdepth, withdirs=withdirs, detail=detail, **kwargs)
+
+        bucket, key = self.split_path(path)
+        if not bucket:
+            raise ValueError("Cannot recursively list all buckets")
+
+        search_prefix = (key + "/" + prefix) if key else prefix
+        all_objects = self._flat_list(bucket, search_prefix)
+
         if withdirs:
-            thisdircache = {}
-            dir_names = []  # kept sorted for fast duplicate checking
-
-            for obj in all_objects:
-                parts = obj["name"].split("/")
-                # Walk up to collect every ancestor directory
-                for i in range(1, len(parts)):
-                    dir_path = "/".join(parts[:i])
-                    if len(dir_path) <= len(bucket):
-                        continue
-                    # Ordered insert + lookup avoids scanning the whole list
-                    idx = bisect.bisect_left(dir_names, dir_path)
-                    if idx < len(dir_names) and dir_names[idx] == dir_path:
-                        continue  # already seen
-                    dir_entry = {
-                        "name": dir_path,
-                        "Key": dir_path,
-                        "type": "directory",
-                        "size": 0,
-                        "Size": 0,
-                        "StorageClass": "DIRECTORY",
-                    }
-                    dir_names.insert(idx, dir_path)
-                    thisdircache[dir_path] = dir_entry
-
-            # Merge file entries into the same dict
-            for obj in all_objects:
-                thisdircache[obj["name"]] = obj
-
-            # Cache the discovered directories (skip when a prefix filter
-            # is active because the listing is partial).
-            if not prefix:
-                self.dircache.update(
-                    {k: v for k, v in thisdircache.items() if v["type"] == "directory"}
-                )
-
-            all_objects = sorted(thisdircache.values(), key=lambda x: x["name"])
+            all_objects = self._synthesize_dirs(bucket, all_objects, prefix)
 
         if detail:
             return {o["name"]: o for o in all_objects}
@@ -551,7 +556,7 @@ class COSFileSystem(AsyncFileSystem):
             bucket, _ = self.split_path(d)
             try:
                 _call_cos(self.client.delete_bucket, Bucket=bucket, retries=self.retries)
-            except Exception as e:
+            except (FileNotFoundError, PermissionError, OSError) as e:
                 logger.debug("Could not delete bucket %s: %s", bucket, e)
 
         # Invalidate caches
@@ -727,7 +732,7 @@ class COSFileSystem(AsyncFileSystem):
         try:
             _call_cos(self.client.abort_multipart_upload, **self.parse_path(path), UploadId=upload_id,
                       retries=self.retries)
-        except Exception:
+        except (CosServiceError, OSError):
             logger.warning("Failed to abort multipart upload %s for %s", upload_id, path)
 
 

@@ -2,18 +2,16 @@
 invalidate_cache, error translation, retry logic, path parsing."""
 
 import errno
-import time
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 import pytest
 
 from cosfs.core import (
-    COSFileSystem, translate_cos_error, _call_cos, COS_RETRYABLE_EXCEPTIONS,
+    translate_cos_error, _call_cos,
     _ensure_part_size, COS_MAX_PARTS,
 )
-from qcloud_cos import CosServiceError
-from tests.conftest import TEST_BUCKET, _make_fs
-from tests.mock_cos import MockCosClient, make_cos_error
+from tests.conftest import TEST_BUCKET
+from tests.mock_cos import make_cos_error
 
 
 # ======================================================================

@@ -191,11 +191,11 @@ class TestSplitPathTrailingSlash:
 
     def test_trailing_slash_preserved(self, cos_fs):
         """split_path should preserve trailing slash for directory placeholders."""
-        bucket, key = cos_fs.split_path("cosn://some-bucket/some/dir/")
+        _, key = cos_fs.split_path("cosn://some-bucket/some/dir/")
         assert key == "some/dir/"
 
     def test_no_trailing_slash(self, cos_fs):
-        bucket, key = cos_fs.split_path("cosn://some-bucket/some/file.txt")
+        _, key = cos_fs.split_path("cosn://some-bucket/some/file.txt")
         assert key == "some/file.txt"
 
 

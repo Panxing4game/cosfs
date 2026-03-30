@@ -138,7 +138,7 @@ class TestLs:
         # Monkeypatch list_objects to use MaxKeys=2
         original_list = client.list_objects
 
-        def small_page_list(Bucket, Prefix="", Delimiter="", Marker="", MaxKeys=1000, **kw):
+        def small_page_list(Bucket, Prefix="", Delimiter="", Marker="", MaxKeys=1000, **kw):  # noqa: N803
             return original_list(Bucket=Bucket, Prefix=Prefix, Delimiter=Delimiter, Marker=Marker, MaxKeys=2, **kw)
 
         client.list_objects = small_page_list

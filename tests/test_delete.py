@@ -64,7 +64,7 @@ class TestRm:
         delete_calls = []
         original_delete = client.delete_objects
 
-        def tracking_delete(Bucket, Delete, **kwargs):
+        def tracking_delete(Bucket, Delete, **kwargs):  # noqa: N803  (match COS SDK)
             delete_calls.append(len(Delete.get("Object", [])))
             return original_delete(Bucket=Bucket, Delete=Delete, **kwargs)
 
